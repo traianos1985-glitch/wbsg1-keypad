@@ -267,21 +267,33 @@
 
   const unitMul = { Hz:1, kHz:1e3, MHz:1e6, GHz:1e9 };
 
+  function flashEntryError(ch, msg){
+    const el = document.getElementById('e'+ch);
+    el.innerHTML = '<span style="color:#ff6b6b;font-size:.9rem">'+msg+'</span>';
+    log("System: " + msg);
+  }
+
   function applyFreq(ch){
     const buf = (ch===1)?entry1:entry2;
-    if(buf===''||isNaN(parseFloat(buf))){ log("System: Δεν εισήχθη έγκυρη συχνότητα."); return; }
+    if(buf===''||isNaN(parseFloat(buf))){ flashEntryError(ch,"Μη έγκυρη συχνότητα."); return; }
     const unit = (ch===1)?unit1:unit2;
     let hz = Math.round(parseFloat(buf) * unitMul[unit]);
 
     if(ch===1){
-      hz = Math.max(CH1_MIN, Math.min(CH1_MAX, hz));
+      if(hz < CH1_MIN || hz > CH1_MAX){
+        flashEntryError(1, "Εκτός ορίων CH1 (1 Hz – 250 MHz).");
+        return;
+      }
       f1 = hz;
       document.getElementById('d1').textContent = formatHz(f1,1);
       entry1 = ""; renderEntry(1);
       sync(1, f1);
     } else {
       hz = Math.round(hz/10)*10;                 // 10 Hz resolution
-      hz = Math.max(CH2_MIN, Math.min(CH2_MAX, hz));
+      if(hz < CH2_MIN || hz > CH2_MAX){
+        flashEntryError(2, "Εκτός ορίων CH2 (35 MHz – 8 GHz).");
+        return;
+      }
       f2 = hz;
       document.getElementById('d2').textContent = formatHz(f2,2);
       entry2 = ""; renderEntry(2);
