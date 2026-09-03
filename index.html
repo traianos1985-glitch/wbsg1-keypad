@@ -111,11 +111,12 @@
 
   /* Log */
   #log{
-    max-width:1000px; margin:0 auto 24px; width:calc(100% - 36px);
+    margin:0; width:100%;
     background:#000; color:#00e676; font-family:'Consolas',monospace; font-size:.72rem;
-    padding:12px; border:1px solid var(--line); border-radius:10px; height:160px; overflow-y:auto;
-    white-space:pre-wrap; word-break:break-all; display:none; user-select:text; -webkit-user-select:text;
+    padding:12px; border:1px solid var(--line); border-radius:10px; height:200px; overflow-y:auto;
+    white-space:pre-wrap; word-break:break-all; user-select:text; -webkit-user-select:text;
   }
+  #log .tx{color:#ffb300;} #log .rx{color:#00e676;} #log .sys{color:#8b939c;} #log .err{color:#ff6b6b;}
   footer{text-align:center; color:var(--muted); font-size:.72rem; padding:10px 0 30px;}
   footer a{color:#00d4ff; text-decoration:none;}
   .warn{max-width:1000px; margin:0 auto; padding:0 18px 6px; color:var(--muted); font-size:.72rem;}
@@ -212,7 +213,25 @@
 
 </div>
 
-<pre id="log"></pre>
+<div id="debugPanel" style="max-width:1000px;margin:0 auto 24px;width:calc(100% - 36px);display:none;">
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;">
+    <strong style="font-size:.78rem;letter-spacing:1px;color:var(--muted);">DEBUG CONSOLE</strong>
+    <span class="spacer" style="flex:1;"></span>
+    <label style="font-size:.7rem;color:var(--muted);display:flex;align-items:center;gap:5px;">
+      <input type="checkbox" id="hexToggle" onchange="log('System: HEX view '+(this.checked?'ON':'OFF'))"> HEX
+    </label>
+    <button class="btn" onclick="sendCommand('$A*')">QUERY STATUS ($A*)</button>
+    <button class="btn" onclick="copyLog()">COPY</button>
+    <button class="btn" onclick="clearLog()">CLEAR</button>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:8px;">
+    <input id="manualCmd" placeholder="Χειροκίνητη εντολή, π.χ. $A*  ή  $F1010000000*"
+      style="flex:1;background:#000;border:1px solid var(--line);color:#fff;padding:10px;border-radius:8px;font-family:'Courier New',monospace;"
+      onkeydown="if(event.key==='Enter'&&!event.nativeEvent?.isComposing&&event.keyCode!==229)sendManual();">
+    <button class="btn" onclick="sendManual()">SEND</button>
+  </div>
+  <pre id="log"></pre>
+</div>
 <footer>WB-SG1 Keypad Front-End · same protocol as WB-SG1-8G v1.9 · <a href="https://katzenjens.github.io/wbsg1/" target="_blank" rel="noopener">original app</a></footer>
 
 <script>
@@ -329,9 +348,25 @@
   }
 
   async function sendCommand(cmd){
-    if(!writer){ log("System: not connected — " + cmd); return; }
-    await writer.write(new TextEncoder().encode(cmd));
-    log("TX -> " + cmd);
+    const bytes = new TextEncoder().encode(cmd);
+    logLine("TX", "→ " + cmd + hexSuffix(bytes), "tx");
+    if(!writer){ logLine("SYS", "not connected — δεν στάλθηκε (μόνο log)", "sys"); return; }
+    await writer.write(bytes);
+  }
+
+  function sendManual(){
+    const el = document.getElementById('manualCmd');
+    let cmd = el.value.trim();
+    if(!cmd) return;
+    if(!cmd.startsWith('$')) cmd = '$' + cmd;
+    if(!cmd.endsWith('*')) cmd = cmd + '*';
+    sendCommand(cmd);
+    el.value = "";
+  }
+
+  function hexSuffix(bytes){
+    if(!document.getElementById('hexToggle')?.checked) return "";
+    return "  [" + Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join(' ') + "]";
   }
 
   async function syncFromDevice(){ log("System: Requesting status..."); await sendCommand('$A*'); }
@@ -386,8 +421,9 @@
       try{
         const {value,done}=await reader.read();
         if(done) break;
-        receivedBuffer += new TextDecoder().decode(value);
-        log("RX <- " + new TextDecoder().decode(value));
+        const txt = new TextDecoder().decode(value);
+        receivedBuffer += txt;
+        logLine("RX", "← " + txt.replace(/\r/g,'\\r').replace(/\n/g,'\\n') + hexSuffix(value), "rx");
         parseIncomingData();
       }catch(e){ break; }
     }
@@ -403,12 +439,33 @@
   }
 
   function toggleLog(){
-    const l=document.getElementById('log'), b=document.getElementById('logToggle');
-    const show=l.style.display!=='block';
-    l.style.display=show?'block':'none';
+    const p=document.getElementById('debugPanel'), b=document.getElementById('logToggle');
+    const show=p.style.display!=='block';
+    p.style.display=show?'block':'none';
     b.style.background=show?'#00e676':''; b.style.color=show?'#000':'';
   }
-  function log(m){ const l=document.getElementById('log'); l.textContent += "\n"+m; l.scrollTop=l.scrollHeight; }
+  function pad2(n){ return n.toString().padStart(2,'0'); }
+  function ts(){ const d=new Date(); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; }
+  function logLine(tag, msg, cls){
+    const l=document.getElementById('log');
+    const span=document.createElement('span');
+    span.className=cls||'sys';
+    span.textContent=`[${ts()}] ${tag.padEnd(3)} ${msg}\n`;
+    l.appendChild(span);
+    l.scrollTop=l.scrollHeight;
+  }
+  function log(m){
+    // legacy calls: strip "System:/TX/RX/Error" prefixes into styled lines
+    if(/^Error/i.test(m)) return logLine("ERR", m.replace(/^Error:\s*/i,''), "err");
+    if(/^System/i.test(m)) return logLine("SYS", m.replace(/^System:\s*/i,''), "sys");
+    logLine("SYS", m, "sys");
+  }
+  function clearLog(){ document.getElementById('log').textContent=""; logLine("SYS","cleared","sys"); }
+  function copyLog(){
+    const txt=document.getElementById('log').textContent;
+    navigator.clipboard?.writeText(txt).then(()=>logLine("SYS","αντιγράφηκε στο clipboard","sys"),
+      ()=>logLine("ERR","αποτυχία copy","err"));
+  }
 
   // hardware keyboard support
   document.addEventListener('keydown',(e)=>{
