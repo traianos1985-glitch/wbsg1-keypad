@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#0d0d0d" />
+<title>WB-SG1-8G Keypad Control</title>
+<style>
+  :root{
+    --bg:#0b0d0f; --panel:#15181c; --panel-2:#1d2126;
+    --line:#2a2f36; --text:#e8ebee; --muted:#8b939c;
+    --ch1:#00e676; --ch2:#ffb300; --danger:#e53935;
+  }
+  *{box-sizing:border-box;}
+  html{background:var(--bg);}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Segoe UI',Tahoma,system-ui,sans-serif;
+    min-height:100vh; -webkit-tap-highlight-color:transparent;
+  }
+  .knob,.btn,.chip,.keypad button,h1,h2,label,.pill{
+    user-select:none;-webkit-user-select:none;
+  }
+
+  /* Header */
+  header{
+    position:sticky; top:0; z-index:50;
+    display:flex; flex-wrap:wrap; align-items:center; gap:10px;
+    padding:10px 16px; background:#101316; border-bottom:1px solid var(--line);
+  }
+  h1{font-size:1rem; letter-spacing:.5px; margin:0; font-weight:600;}
+  h1 small{display:block; color:var(--muted); font-size:.68rem; font-weight:400; letter-spacing:1px;}
+  .spacer{flex:1;}
+  .sys{display:flex; align-items:center; gap:8px; background:var(--panel-2);
+    padding:6px 10px; border-radius:8px; border:1px solid var(--line); font-size:.72rem; color:var(--muted);}
+  .btn{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--line);
+    padding:8px 12px; border-radius:8px; cursor:pointer; font-size:.78rem; font-weight:600;
+    transition:.15s; white-space:nowrap;
+  }
+  .btn:hover{background:#262b31;}
+  .btn:active{transform:translateY(1px);}
+  .btn.connect{background:var(--danger); border-color:transparent; color:#fff;}
+  .btn.online{background:#1b8a4b; border-color:transparent;}
+
+  /* Switch */
+  .switch{position:relative; display:inline-block; width:38px; height:20px;}
+  .switch input{opacity:0; width:0; height:0;}
+  .slider{position:absolute; inset:0; background:#3a3f46; border-radius:20px; transition:.25s; cursor:pointer;}
+  .slider:before{content:""; position:absolute; height:14px; width:14px; left:3px; bottom:3px;
+    background:#fff; border-radius:50%; transition:.25s;}
+  input:checked + .slider{background:#4527a0;}
+  input:checked + .slider:before{transform:translateX(18px);}
+
+  input[type=range]{accent-color:#7c6bd6; width:110px;}
+
+  /* Layout */
+  .wrap{max-width:1000px; margin:0 auto; padding:18px; display:grid; gap:18px; grid-template-columns:1fr;}
+  @media(min-width:900px){ .wrap{grid-template-columns:1fr 1fr;} }
+
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; display:flex; flex-direction:column;}
+  .card.ch1{border-top:3px solid var(--ch1);}
+  .card.ch2{border-top:3px solid var(--ch2);}
+  .card h2{margin:0 0 4px; font-size:.82rem; letter-spacing:1px; color:var(--muted); text-transform:uppercase;}
+  .range-note{font-size:.68rem; color:var(--muted); margin-bottom:12px;}
+
+  .display{
+    background:#000; border:1px solid var(--line); border-radius:10px;
+    font-family:'Courier New',monospace; text-align:right;
+    padding:14px 16px; margin-bottom:12px; min-height:64px;
+    display:flex; flex-direction:column; justify-content:center;
+  }
+  .display .live{font-size:.66rem; color:var(--muted); letter-spacing:1px; text-align:left; margin-bottom:2px;}
+  .display .val{font-size:1.9rem; font-weight:700; line-height:1;}
+  .ch1 .display .val{color:var(--ch1); text-shadow:0 0 8px #00e67655;}
+  .ch2 .display .val{color:var(--ch2); text-shadow:0 0 8px #ffb30055;}
+  .display .unit{font-size:.9rem;}
+
+  .entry{
+    background:#000; border:1px solid var(--line); border-radius:10px;
+    padding:10px 14px; margin-bottom:10px; font-family:'Courier New',monospace;
+    font-size:1.5rem; text-align:right; color:#fff; min-height:48px; word-break:break-all;
+  }
+  .entry .caret{color:var(--muted);}
+
+  .units{display:flex; gap:6px; margin-bottom:10px;}
+  .chip{flex:1; text-align:center; background:var(--panel-2); border:1px solid var(--line);
+    border-radius:8px; padding:8px 0; font-size:.8rem; cursor:pointer; font-weight:600; color:var(--muted);}
+  .chip.active{color:#fff;}
+  .ch1 .chip.active{background:#0f5132; border-color:var(--ch1); color:var(--ch1);}
+  .ch2 .chip.active{background:#5c4300; border-color:var(--ch2); color:var(--ch2);}
+
+  .keypad{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+  .keypad button{
+    padding:16px 0; font-size:1.3rem; font-weight:700; border-radius:10px;
+    background:var(--panel-2); color:var(--text); border:1px solid var(--line); cursor:pointer; transition:.1s;
+  }
+  .keypad button:active{transform:translateY(1px); background:#2b3138;}
+  .keypad button.util{font-size:1rem; color:var(--muted);}
+
+  .actions{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:10px;}
+  .btn-set{background:#2e7d32; border:none; color:#fff; font-weight:700; padding:14px 0; border-radius:10px; cursor:pointer; font-size:.9rem; grid-column:span 3;}
+  .ch2 .btn-set{background:#c78100; color:#000;}
+  .btn-rf-on{background:#1b5e20; border:none; color:#fff; padding:12px 0; border-radius:10px; cursor:pointer; font-weight:700;}
+  .btn-rf-off{background:#4a1010; border:1px solid #7a2020; color:#ff8a80; padding:12px 0; border-radius:10px; cursor:pointer; font-weight:700;}
+
+  /* Sweep */
+  .sweep .row{display:flex; gap:8px; margin-bottom:8px;}
+  .sweep input{flex:1; background:#000; border:1px solid var(--line); color:#fff; padding:10px; border-radius:8px; font-family:'Courier New',monospace;}
+  .btn-run{margin-top:6px; background:#263238; border:1px solid var(--line); color:#fff; padding:12px; border-radius:10px; cursor:pointer; font-weight:700; text-transform:uppercase; font-size:.8rem;}
+
+  /* Log */
+  #log{
+    max-width:1000px; margin:0 auto 24px; width:calc(100% - 36px);
+    background:#000; color:#00e676; font-family:'Consolas',monospace; font-size:.72rem;
+    padding:12px; border:1px solid var(--line); border-radius:10px; height:160px; overflow-y:auto;
+    white-space:pre-wrap; word-break:break-all; display:none; user-select:text; -webkit-user-select:text;
+  }
+  footer{text-align:center; color:var(--muted); font-size:.72rem; padding:10px 0 30px;}
+  footer a{color:#00d4ff; text-decoration:none;}
+  .warn{max-width:1000px; margin:0 auto; padding:0 18px 6px; color:var(--muted); font-size:.72rem;}
+</style>
+</head>
+<body>
+<header>
+  <h1>WB-SG1-8G<small>KEYPAD FRONT-END</small></h1>
+  <div class="spacer"></div>
+  <div class="sys">
+    <label for="beep">Beeper</label>
+    <span class="switch"><input type="checkbox" id="beep" onchange="toggleBeeper(this.checked)"><span class="slider"></span></span>
+  </div>
+  <div class="sys">
+    <label for="mod">Mod</label>
+    <span class="switch"><input type="checkbox" id="mod" onchange="toggleMod(this.checked)"><span class="slider"></span></span>
+  </div>
+  <div class="sys">
+    <label for="contrast">Contrast <span id="contrastVal">32</span></label>
+    <input type="range" id="contrast" min="0" max="63" value="32" oninput="updateContrast(this.value)">
+  </div>
+  <button class="btn" onclick="toggleLog()" id="logToggle">DEBUG</button>
+  <button class="btn" onclick="handleMode()">MODE</button>
+  <button class="btn" onclick="sendCommand('$S*')">SAVE</button>
+  <button class="btn connect" id="connBtn" onclick="connect()">CONNECT</button>
+</header>
+
+<p class="warn">Απαιτείται Chrome/Edge σε desktop ή Android (Web Serial). Συνδέστε τη γεννήτρια WB-SG1 μέσω USB και πατήστε CONNECT.</p>
+
+<div class="wrap">
+
+  <!-- CH1 -->
+  <section class="card ch1" id="card1">
+    <h2>CH 1 · Frequency</h2>
+    <div class="range-note">Εύρος: 1 Hz – 250 MHz · Ανάλυση 1 Hz</div>
+    <div class="display">
+      <div class="live">LIVE</div>
+      <div><span class="val" id="d1">10'000'000</span> <span class="unit">Hz</span></div>
+    </div>
+    <div class="entry" id="e1"><span class="caret">εισάγετε συχνότητα…</span></div>
+    <div class="units" id="u1">
+      <div class="chip" data-u="Hz" onclick="setUnit(1,'Hz',this)">Hz</div>
+      <div class="chip active" data-u="kHz" onclick="setUnit(1,'kHz',this)">kHz</div>
+      <div class="chip" data-u="MHz" onclick="setUnit(1,'MHz',this)">MHz</div>
+    </div>
+    <div class="keypad" id="k1"></div>
+    <div class="actions">
+      <button class="btn-set" onclick="applyFreq(1)">SET FREQUENCY</button>
+      <button class="btn-rf-on" onclick="sendCommand('$E3434*')">RF ON</button>
+      <button class="btn-rf-off" onclick="sendCommand('$E3535*')" style="grid-column:span 2;">RF OFF</button>
+    </div>
+  </section>
+
+  <!-- CH2 -->
+  <section class="card ch2" id="card2">
+    <h2>CH 2 · Frequency</h2>
+    <div class="range-note">Εύρος: 35 MHz – 8 GHz · Ανάλυση 10 Hz</div>
+    <div class="display">
+      <div class="live">LIVE</div>
+      <div><span class="val" id="d2">100'000'000</span> <span class="unit">Hz</span></div>
+    </div>
+    <div class="entry" id="e2"><span class="caret">εισάγετε συχνότητα…</span></div>
+    <div class="units" id="u2">
+      <div class="chip" data-u="Hz" onclick="setUnit(2,'Hz',this)">Hz</div>
+      <div class="chip" data-u="kHz" onclick="setUnit(2,'kHz',this)">kHz</div>
+      <div class="chip active" data-u="MHz" onclick="setUnit(2,'MHz',this)">MHz</div>
+      <div class="chip" data-u="GHz" onclick="setUnit(2,'GHz',this)">GHz</div>
+    </div>
+    <div class="keypad" id="k2"></div>
+    <div class="actions">
+      <button class="btn-set" onclick="applyFreq(2)">SET FREQUENCY</button>
+      <button class="btn-rf-on" onclick="sendCommand('$E3636*')">RF ON</button>
+      <button class="btn-rf-off" onclick="sendCommand('$E3737*')" style="grid-column:span 2;">RF OFF</button>
+    </div>
+  </section>
+
+  <!-- CH1 Sweep -->
+  <section class="card ch1 sweep">
+    <h2>CH 1 · Sweep</h2>
+    <div class="range-note">Τιμές σε Hz</div>
+    <div class="row"><input id="w1s" type="number" placeholder="Start (Hz)"><input id="w1e" type="number" placeholder="Stop (Hz)"></div>
+    <div class="row"><input id="w1step" type="number" placeholder="Steps"></div>
+    <button class="btn-run" onclick="runSweep(1)">▶ Start Sweep CH1</button>
+  </section>
+
+  <!-- CH2 Sweep -->
+  <section class="card ch2 sweep">
+    <h2>CH 2 · Sweep</h2>
+    <div class="range-note">Τιμές σε Hz</div>
+    <div class="row"><input id="w2s" type="number" placeholder="Start (Hz)"><input id="w2e" type="number" placeholder="Stop (Hz)"></div>
+    <div class="row"><input id="w2step" type="number" placeholder="Steps"></div>
+    <button class="btn-run" onclick="runSweep(2)">▶ Start Sweep CH2</button>
+  </section>
+
+</div>
+
+<pre id="log"></pre>
+<footer>WB-SG1 Keypad Front-End · same protocol as WB-SG1-8G v1.9 · <a href="https://katzenjens.github.io/wbsg1/" target="_blank" rel="noopener">original app</a></footer>
+
+<script>
+  // ===== State =====
+  let port, writer, t;
+  let f1 = 10000000, f2 = 100000000;    // live Hz values
+  let entry1 = "", entry2 = "";          // keypad buffers (string)
+  let unit1 = "kHz", unit2 = "MHz";
+  let receivedBuffer = "";
+  let isSweeping = false;
+
+  const CH1_MIN = 1, CH1_MAX = 250000000;
+  const CH2_MIN = 35000000, CH2_MAX = 8000000000;
+
+  // ===== Keypad build =====
+  const keys = ['7','8','9','4','5','6','1','2','3','.','0','⌫'];
+  function buildKeypad(ch){
+    const grid = document.getElementById('k'+ch);
+    keys.forEach(k=>{
+      const b = document.createElement('button');
+      b.textContent = k;
+      if(k==='.'||k==='⌫') b.className='util';
+      b.onclick = ()=> pressKey(ch,k);
+      grid.appendChild(b);
+    });
+  }
+  buildKeypad(1); buildKeypad(2);
+
+  function pressKey(ch,k){
+    let buf = (ch===1)?entry1:entry2;
+    if(k==='⌫'){ buf = buf.slice(0,-1); }
+    else if(k==='.'){ if(!buf.includes('.')) buf += (buf===''?'0.':'.'); }
+    else { if(buf==='0') buf=k; else buf += k; }
+    if(ch===1) entry1=buf; else entry2=buf;
+    renderEntry(ch);
+  }
+
+  function renderEntry(ch){
+    const el = document.getElementById('e'+ch);
+    const buf = (ch===1)?entry1:entry2;
+    const unit = (ch===1)?unit1:unit2;
+    if(buf===''){ el.innerHTML='<span class="caret">εισάγετε συχνότητα…</span>'; return; }
+    el.textContent = buf + ' ' + unit;
+  }
+
+  function setUnit(ch,u,btn){
+    if(ch===1) unit1=u; else unit2=u;
+    btn.parentElement.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+    btn.classList.add('active');
+    renderEntry(ch);
+  }
+
+  const unitMul = { Hz:1, kHz:1e3, MHz:1e6, GHz:1e9 };
+
+  function applyFreq(ch){
+    const buf = (ch===1)?entry1:entry2;
+    if(buf===''||isNaN(parseFloat(buf))){ log("System: Δεν εισήχθη έγκυρη συχνότητα."); return; }
+    const unit = (ch===1)?unit1:unit2;
+    let hz = Math.round(parseFloat(buf) * unitMul[unit]);
+
+    if(ch===1){
+      hz = Math.max(CH1_MIN, Math.min(CH1_MAX, hz));
+      f1 = hz;
+      document.getElementById('d1').textContent = formatHz(f1,1);
+      entry1 = ""; renderEntry(1);
+      sync(1, f1);
+    } else {
+      hz = Math.round(hz/10)*10;                 // 10 Hz resolution
+      hz = Math.max(CH2_MIN, Math.min(CH2_MAX, hz));
+      f2 = hz;
+      document.getElementById('d2').textContent = formatHz(f2,2);
+      entry2 = ""; renderEntry(2);
+      sync(2, f2);
+    }
+  }
+
+  // ===== Formatting =====
+  function formatHz(n, ch){
+    let padding = (ch===1)?9:10;
+    let s = Math.floor(n).toString().padStart(padding,'0');
+    return s.replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+  }
+
+  // ===== Serial =====
+  async function connect(){
+    if(!("serial" in navigator)) return alert("Web Serial not supported! Χρησιμοποιήστε Chrome/Edge.");
+    try{
+      port = await navigator.serial.requestPort();
+      await port.open({ baudRate: 9600 });
+      writer = port.writable.getWriter();
+      const b = document.getElementById('connBtn');
+      b.textContent = "✅ ONLINE"; b.classList.remove('connect'); b.classList.add('online');
+      log("System: Connection established.");
+      setTimeout(()=>syncFromDevice(), 1000);
+      readLoop();
+    }catch(e){ log("Error: " + e.message); }
+  }
+
+  async function sendCommand(cmd){
+    if(!writer){ log("System: not connected — " + cmd); return; }
+    await writer.write(new TextEncoder().encode(cmd));
+    log("TX -> " + cmd);
+  }
+
+  async function syncFromDevice(){ log("System: Requesting status..."); await sendCommand('$A*'); }
+
+  async function handleMode(){
+    isSweeping=false; setDisplayUI(true);
+    await sendCommand('$N*');
+    setTimeout(()=>syncFromDevice(), 500);
+  }
+
+  function toggleBeeper(on){ sendCommand(on?'$E3232*':'$E3333*'); }
+  function toggleMod(on){ sendCommand(on?'$E3838*':'$E3939*'); }
+
+  let cT;
+  function updateContrast(val){
+    document.getElementById('contrastVal').textContent = val;
+    clearTimeout(cT);
+    cT=setTimeout(()=>sendCommand(`$C${val.toString().padStart(2,'0')}*`),150);
+  }
+
+  function sync(ch,val){
+    isSweeping=false; setDisplayUI(true);
+    clearTimeout(t);
+    t=setTimeout(async()=>{
+      let s=(ch===1)?val.toString():Math.floor(val/10).toString();
+      await sendCommand(`$F${ch}${s.padStart(9,'0')}*`);
+    },120);
+  }
+
+  async function runSweep(ch){
+    isSweeping=true; receivedBuffer=""; setDisplayUI(false);
+    document.getElementById('d'+ch).textContent = "SWEEPING…";
+    const start=parseInt(document.getElementById(`w${ch}s`).value);
+    const stop=parseInt(document.getElementById(`w${ch}e`).value);
+    const step=parseInt(document.getElementById(`w${ch}step`).value);
+    if([start,stop,step].some(isNaN)){ log("System: Συμπληρώστε Start/Stop/Steps."); isSweeping=false; return; }
+    const kid=(ch===1)?'3':'4';
+    let sS=(ch===1)?start.toString():Math.floor(start/10).toString();
+    let eS=(ch===1)?stop.toString():Math.floor(stop/10).toString();
+    await sendCommand(`$W${kid}${sS.padStart(9,'0')}${eS.padStart(9,'0')}${step.toString().padStart(9,'0')}*`);
+  }
+
+  function setDisplayUI(active){
+    const o=active?"1":"0.35";
+    document.getElementById('d1').style.opacity=o;
+    document.getElementById('d2').style.opacity=o;
+  }
+
+  async function readLoop(){
+    const reader=port.readable.getReader();
+    while(true){
+      try{
+        const {value,done}=await reader.read();
+        if(done) break;
+        receivedBuffer += new TextDecoder().decode(value);
+        log("RX <- " + new TextDecoder().decode(value));
+        parseIncomingData();
+      }catch(e){ break; }
+    }
+  }
+
+  function parseIncomingData(){
+    if(isSweeping){ if(receivedBuffer.length>500) receivedBuffer=""; return; }
+    const m1=receivedBuffer.match(/CH1\D+(\d+)\s*Hz/i);
+    if(m1){ f1=parseInt(m1[1]); document.getElementById('d1').textContent=formatHz(f1,1); receivedBuffer=receivedBuffer.replace(m1[0],"[SYNCED]"); }
+    const m2=receivedBuffer.match(/CH2\D+(\d+)\s*Hz/i);
+    if(m2){ f2=parseInt(m2[1]); document.getElementById('d2').textContent=formatHz(f2,2); receivedBuffer=receivedBuffer.replace(m2[0],"[SYNCED]"); }
+    if(receivedBuffer.length>2000) receivedBuffer=receivedBuffer.substring(1000);
+  }
+
+  function toggleLog(){
+    const l=document.getElementById('log'), b=document.getElementById('logToggle');
+    const show=l.style.display!=='block';
+    l.style.display=show?'block':'none';
+    b.style.background=show?'#00e676':''; b.style.color=show?'#000':'';
+  }
+  function log(m){ const l=document.getElementById('log'); l.textContent += "\n"+m; l.scrollTop=l.scrollHeight; }
+
+  // hardware keyboard support
+  document.addEventListener('keydown',(e)=>{
+    const tag=document.activeElement.tagName;
+    if(tag==='INPUT') return; // let sweep inputs work normally
+    if(/[0-9.]/.test(e.key)) pressKey(activeCh, e.key);
+    else if(e.key==='Backspace') pressKey(activeCh, '⌫');
+    else if(e.key==='Enter') applyFreq(activeCh);
+  });
+  let activeCh=1;
+  document.getElementById('card1').addEventListener('click',()=>activeCh=1);
+  document.getElementById('card2').addEventListener('click',()=>activeCh=2);
+</script>
+</body>
+</html>
