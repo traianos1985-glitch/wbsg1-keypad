@@ -289,7 +289,9 @@
       entry1 = ""; renderEntry(1);
       sync(1, f1);
     } else {
-      hz = Math.round(hz/10)*10;                 // 10 Hz resolution
+      const rounded = Math.round(hz/10)*10;      // 10 Hz resolution (CH2)
+      const wasRounded = (rounded !== hz);
+      hz = rounded;
       if(hz < CH2_MIN || hz > CH2_MAX){
         flashEntryError(2, "Εκτός ορίων CH2 (35 MHz – 8 GHz).");
         return;
@@ -297,6 +299,9 @@
       f2 = hz;
       document.getElementById('d2').textContent = formatHz(f2,2);
       entry2 = ""; renderEntry(2);
+      if(wasRounded){
+        log("System: Το CH2 έχει ανάλυση 10 Hz — στρογγυλοποιήθηκε σε " + hz.toLocaleString('el-GR') + " Hz.");
+      }
       sync(2, f2);
     }
   }
