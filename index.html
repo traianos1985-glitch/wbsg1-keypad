@@ -120,6 +120,28 @@
   footer{text-align:center; color:var(--muted); font-size:.72rem; padding:10px 0 30px;}
   footer a{color:#00d4ff; text-decoration:none;}
   .warn{max-width:1000px; margin:0 auto; padding:0 18px 6px; color:var(--muted); font-size:.72rem;}
+
+  /* Status bar */
+  .statusbar{
+    position:sticky; top:57px; z-index:40;
+    display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+    padding:8px 16px; background:#0d1013; border-bottom:1px solid var(--line);
+  }
+  .pill{
+    display:inline-flex; align-items:center; gap:6px;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:20px;
+    padding:5px 11px; font-size:.68rem; letter-spacing:.5px; color:var(--muted);
+    font-family:'Courier New',monospace; text-transform:uppercase; white-space:nowrap;
+  }
+  .pill .dot{width:8px; height:8px; border-radius:50%; background:#3a3f46; transition:.2s;}
+  .pill b{color:var(--text); font-weight:700;}
+  .pill.on .dot{background:var(--ch1); box-shadow:0 0 6px var(--ch1);}
+  .pill.on b{color:var(--ch1);}
+  .pill.off .dot{background:var(--danger);}
+  .pill.off b{color:#ff8a80;}
+  .pill.warnst .dot{background:var(--ch2); box-shadow:0 0 6px var(--ch2);}
+  .pill.warnst b{color:var(--ch2);}
+  .pill.neutral .dot{background:#5a6068;}
 </style>
 </head>
 <body>
@@ -144,6 +166,16 @@
   <button class="btn connect" id="connBtn" onclick="connect()">CONNECT</button>
 </header>
 
+<div class="statusbar" id="statusbar" aria-label="Κατάσταση συσκευής">
+  <span class="pill off" id="st-conn"><span class="dot"></span>CONN <b>OFFLINE</b></span>
+  <span class="pill neutral" id="st-mode"><span class="dot"></span>MODE <b>NORMAL</b></span>
+  <span class="pill neutral" id="st-ch1"><span class="dot"></span>CH1 RF <b>—</b></span>
+  <span class="pill neutral" id="st-ch2"><span class="dot"></span>CH2 RF <b>—</b></span>
+  <span class="pill neutral" id="st-mod"><span class="dot"></span>MOD <b>—</b></span>
+  <span class="pill neutral" id="st-beep"><span class="dot"></span>BEEP <b>—</b></span>
+  <span class="pill neutral" id="st-ref"><span class="dot"></span>REF <b>INT</b></span>
+</div>
+
 <p class="warn">Απαιτείται Chrome/Edge σε desktop ή Android (Web Serial). Συνδέστε τη γεννήτρια WB-SG1 μέσω USB και πατήστε CONNECT.</p>
 
 <div class="wrap">
@@ -165,8 +197,8 @@
     <div class="keypad" id="k1"></div>
     <div class="actions">
       <button class="btn-set" onclick="applyFreq(1)">SET FREQUENCY</button>
-      <button class="btn-rf-on" onclick="sendCommand('$E3434*')">RF ON</button>
-      <button class="btn-rf-off" onclick="sendCommand('$E3535*')" style="grid-column:span 2;">RF OFF</button>
+      <button class="btn-rf-on" onclick="setRF(1,true)">RF ON</button>
+      <button class="btn-rf-off" onclick="setRF(1,false)" style="grid-column:span 2;">RF OFF</button>
     </div>
   </section>
 
@@ -188,8 +220,8 @@
     <div class="keypad" id="k2"></div>
     <div class="actions">
       <button class="btn-set" onclick="applyFreq(2)">SET FREQUENCY</button>
-      <button class="btn-rf-on" onclick="sendCommand('$E3636*')">RF ON</button>
-      <button class="btn-rf-off" onclick="sendCommand('$E3737*')" style="grid-column:span 2;">RF OFF</button>
+      <button class="btn-rf-on" onclick="setRF(2,true)">RF ON</button>
+      <button class="btn-rf-off" onclick="setRF(2,false)" style="grid-column:span 2;">RF OFF</button>
     </div>
   </section>
 
@@ -242,6 +274,32 @@
   let unit1 = "kHz", unit2 = "MHz";
   let receivedBuffer = "";
   let isSweeping = false;
+
+  // ===== Status state (tracked from known commands only) =====
+  const status = {
+    conn: false,       // connected
+    mode: "NORMAL",    // NORMAL | SWEEP
+    ch1rf: null,       // true | false | null(unknown)
+    ch2rf: null,
+    mod:  null,
+    beep: null,
+  };
+  function setPill(id, cls, valText){
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.className = "pill " + cls;
+    el.querySelector('b').textContent = valText;
+  }
+  function refreshStatus(){
+    setPill('st-conn', status.conn?'on':'off', status.conn?'ONLINE':'OFFLINE');
+    setPill('st-mode', status.mode==='SWEEP'?'warnst':'neutral', status.mode);
+    const rf = v => v===null ? ['neutral','—'] : (v ? ['on','ON'] : ['off','OFF']);
+    let r;
+    r = rf(status.ch1rf); setPill('st-ch1', r[0], r[1]);
+    r = rf(status.ch2rf); setPill('st-ch2', r[0], r[1]);
+    r = rf(status.mod);   setPill('st-mod', r[0], r[1]);
+    r = rf(status.beep);  setPill('st-beep', r[0], r[1]);
+  }
 
   const CH1_MIN = 1, CH1_MAX = 250000000;
   const CH2_MIN = 35000000, CH2_MAX = 8000000000;
@@ -341,6 +399,7 @@
       writer = port.writable.getWriter();
       const b = document.getElementById('connBtn');
       b.textContent = "✅ ONLINE"; b.classList.remove('connect'); b.classList.add('online');
+      status.conn = true; refreshStatus();
       log("System: Connection established.");
       setTimeout(()=>syncFromDevice(), 1000);
       readLoop();
@@ -373,12 +432,18 @@
 
   async function handleMode(){
     isSweeping=false; setDisplayUI(true);
+    status.mode="NORMAL"; refreshStatus();
     await sendCommand('$N*');
     setTimeout(()=>syncFromDevice(), 500);
   }
 
-  function toggleBeeper(on){ sendCommand(on?'$E3232*':'$E3333*'); }
-  function toggleMod(on){ sendCommand(on?'$E3838*':'$E3939*'); }
+  function setRF(ch, on){
+    if(ch===1){ sendCommand(on?'$E3434*':'$E3535*'); status.ch1rf=on; }
+    else       { sendCommand(on?'$E3636*':'$E3737*'); status.ch2rf=on; }
+    refreshStatus();
+  }
+  function toggleBeeper(on){ sendCommand(on?'$E3232*':'$E3333*'); status.beep=on; refreshStatus(); }
+  function toggleMod(on){ sendCommand(on?'$E3838*':'$E3939*'); status.mod=on; refreshStatus(); }
 
   let cT;
   function updateContrast(val){
@@ -389,6 +454,7 @@
 
   function sync(ch,val){
     isSweeping=false; setDisplayUI(true);
+    status.mode="NORMAL"; refreshStatus();
     clearTimeout(t);
     t=setTimeout(async()=>{
       let s=(ch===1)?val.toString():Math.floor(val/10).toString();
@@ -403,6 +469,7 @@
     const stop=parseInt(document.getElementById(`w${ch}e`).value);
     const step=parseInt(document.getElementById(`w${ch}step`).value);
     if([start,stop,step].some(isNaN)){ log("System: Συμπληρώστε Start/Stop/Steps."); isSweeping=false; return; }
+    status.mode="SWEEP"; refreshStatus();
     const kid=(ch===1)?'3':'4';
     let sS=(ch===1)?start.toString():Math.floor(start/10).toString();
     let eS=(ch===1)?stop.toString():Math.floor(stop/10).toString();
