@@ -173,7 +173,8 @@
   <span class="pill neutral" id="st-ch2"><span class="dot"></span>CH2 RF <b>—</b></span>
   <span class="pill neutral" id="st-mod"><span class="dot"></span>MOD <b>—</b></span>
   <span class="pill neutral" id="st-beep"><span class="dot"></span>BEEP <b>—</b></span>
-  <span class="pill neutral" id="st-ref"><span class="dot"></span>REF <b>INT</b></span>
+  <span class="pill neutral" id="st-pll"><span class="dot"></span>PLL <b>—</b></span>
+  <span class="pill neutral" id="st-ref"><span class="dot"></span>REF <b>—</b></span>
 </div>
 
 <p class="warn">Απαιτείται Chrome/Edge σε desktop ή Android (Web Serial). Συνδέστε τη γεννήτρια WB-SG1 μέσω USB και πατήστε CONNECT.</p>
@@ -283,6 +284,8 @@
     ch2rf: null,
     mod:  null,
     beep: null,
+    pll:  null,        // true(LOCK) | false(UNLOCK) | null(unknown)
+    ref:  null,        // "INT" | "EXT" | null(unknown)
   };
   function setPill(id, cls, valText){
     const el = document.getElementById(id);
@@ -299,6 +302,11 @@
     r = rf(status.ch2rf); setPill('st-ch2', r[0], r[1]);
     r = rf(status.mod);   setPill('st-mod', r[0], r[1]);
     r = rf(status.beep);  setPill('st-beep', r[0], r[1]);
+    // PLL lock (από $A* status)
+    if(status.pll===null) setPill('st-pll','neutral','—');
+    else setPill('st-pll', status.pll?'on':'off', status.pll?'LOCK':'UNLOCK');
+    // Reference clock (από $A* status)
+    setPill('st-ref', status.ref?'on':'neutral', status.ref||'—');
   }
 
   const CH1_MIN = 1, CH1_MAX = 250000000;
@@ -498,11 +506,49 @@
 
   function parseIncomingData(){
     if(isSweeping){ if(receivedBuffer.length>500) receivedBuffer=""; return; }
-    const m1=receivedBuffer.match(/CH1\D+(\d+)\s*Hz/i);
-    if(m1){ f1=parseInt(m1[1]); document.getElementById('d1').textContent=formatHz(f1,1); receivedBuffer=receivedBuffer.replace(m1[0],"[SYNCED]"); }
-    const m2=receivedBuffer.match(/CH2\D+(\d+)\s*Hz/i);
-    if(m2){ f2=parseInt(m2[1]); document.getElementById('d2').textContent=formatHz(f2,2); receivedBuffer=receivedBuffer.replace(m2[0],"[SYNCED]"); }
-    if(receivedBuffer.length>2000) receivedBuffer=receivedBuffer.substring(1000);
+    // Κάθε απάντηση της γεννήτριας τελειώνει σε \r\n. Επεξεργαζόμαστε μόνο
+    // πλήρεις γραμμές και κρατάμε το ημιτελές υπόλοιπο στον buffer — έτσι
+    // αποφεύγουμε λάθος matches από το fragmentation των RX chunks.
+    let idx;
+    while((idx = receivedBuffer.indexOf('\n')) >= 0){
+      const line = receivedBuffer.slice(0, idx).replace(/\r$/,'');
+      receivedBuffer = receivedBuffer.slice(idx + 1);
+      processLine(line);
+    }
+    // ασφάλεια: μην αφήσουμε τον buffer να μεγαλώσει χωρίς terminator
+    if(receivedBuffer.length > 2000) receivedBuffer = receivedBuffer.slice(-1000);
+  }
+
+  // Επεξεργασία μιας ολοκληρωμένης γραμμής απάντησης.
+  // Καλύπτει:
+  //  • $A* status:  SYS STATE:CH1 <hz>Hz,OUT ON,CH2 <hz>Hz,OUT ON,MOD OFF,PLL LOCK,REF INT,...,AOK
+  //  • $F FOK:      CH1 <hz>Hz FOK  /  CH2 <hz>Hz FOK
+  //  • $E EOK:      CH1 OUT ON EOK  /  CH2 OUT OFF EOK  /  MOD ON EOK
+  function processLine(line){
+    if(!line.trim()) return;
+    let changed = false;
+
+    // --- Συχνότητες (σε πλήρη Hz, όπως επιβεβαιώθηκε από serial sniffing) ---
+    const m1 = line.match(/CH1\D+(\d+)\s*Hz/i);
+    if(m1){ f1 = parseInt(m1[1],10); document.getElementById('d1').textContent = formatHz(f1,1); }
+    const m2 = line.match(/CH2\D+(\d+)\s*Hz/i);
+    if(m2){ f2 = parseInt(m2[1],10); document.getElementById('d2').textContent = formatHz(f2,2); }
+
+    // --- Κατάσταση εξόδου ανά κανάλι (lazy match ώστε CH1 να μην "πιάσει" το OUT του CH2) ---
+    const c1 = line.match(/CH1[\s\S]*?OUT\s+(ON|OFF)/i);
+    if(c1){ status.ch1rf = /ON/i.test(c1[1]); changed = true; }
+    const c2 = line.match(/CH2[\s\S]*?OUT\s+(ON|OFF)/i);
+    if(c2){ status.ch2rf = /ON/i.test(c2[1]); changed = true; }
+
+    // --- Modulation / PLL lock / Reference clock ---
+    const md = line.match(/MOD\s+(ON|OFF)/i);
+    if(md){ status.mod = /ON/i.test(md[1]); changed = true; }
+    const pll = line.match(/PLL\s+([A-Z]+)/i);
+    if(pll){ status.pll = /LOCK/i.test(pll[1]); changed = true; }
+    const rf = line.match(/REF\s+(INT|EXT)/i);
+    if(rf){ status.ref = rf[1].toUpperCase(); changed = true; }
+
+    if(changed) refreshStatus();
   }
 
   function toggleLog(){
